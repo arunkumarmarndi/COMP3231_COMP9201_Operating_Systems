@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "vfs.h": "c",
+        "array": "c",
+        "file.h": "c"
+    }
+}

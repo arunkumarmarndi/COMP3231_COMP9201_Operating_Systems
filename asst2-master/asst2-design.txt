@@ -1,0 +1,62 @@
+The goal of this assignment is to create a program that acts as the bridge between file system calls and the OS161 kernel. The current capabilities of the OS161 is quite limited to simple operations. It can neither provide an interface for running user level executable or programs nor can handle system call requests. In order to provide such services to successfully run user-level programs and handle system call requests, we first need to design  and code an interface that can help the application request cross the user-kernel boundary and let the kernel handle the request and interact with the files, perform the necessary file operations during kernel mode. Once completing the file operations, it can safely return to user-mode to carry on with its normal execution. The major goal however boils down to keeping track of the file descriptor table and open files table of the processes and how to manage them in the OS environment.
+
+The basic working of system call:
+1. The application has system call libraries.
+2. The application performs system call using those libraries.
+3. The system call dispatcher will recognise that it is a system call
+4. The implementation of the system call is available in the OS161 kernel.
+5. The kernel interacts with the file system, performs the necessary operation with the requested file that is available in the storage device and returns the result.
+
+To manage the file descriptor ,file pointer, file descriptor table and open file table, we need to  design a data structure to manage all including the system call provided the system call does not crash.
+
+We ended up implementing two arrays which point directly to a file_node struct containing the a vnode, and a set of information for the manipulation of the file its self. 
+The fd_table[OPEN_MAX] is located in proc.h struct because each new process requires a function call of runprogram.c which initialises this struct
+This means that each new program obtains a new fd_table which can be accesses with curproc->fd_table[] (curpoc is already a typecast)
+
+The of_table[OPEN_MAX] is set as a global static array in file.h because we wanted it to be accessible by all the files within the code base so that
+a function could extract the appropriate information about a certain file. Truth be said, we ended up using curproc->fd_table[] more often because of the 
+nature of this assignemnt having a single process run at the time which requires sys_calls to be performed on the current process (unless if we implement fork()).
+
+We allocated both of these arrays at size OPEN_MAX because it's a macro defined to have a maximum number of open files, however, we also thought that MAX_PID may be of use
+for the advanced part of the assignemnt when the process is being forked. 
+
+Each of these arrays point to a file_info node which is allocated on the heap with kmalloc(). 
+
+Structure name: proc
+Located in : proc.h
+variables and description: 
+						 char *p_name    → stores name of the process
+			       struct addrspace	*p_addrspace → stores address of the process
+             struct vnode *p_cwd; → current working direcotry of 
+						 struct file_info *fd_table[OPEN_MAX]	→ file descriptor table of the given process
+             
+Structure name: file_info
+Locatef in : file.h
+variables and description: 
+    				 struct vnode* vn; → vnode pointer pointing to the next node
+    				 int ref_count;
+    				 int flag;
+             int of_index; 
+    				 struct lock *file_lock;
+             
+             
+Function definitions: 
+
+We have the 6 main functions which are used for system calls and 5 supporting functions which vary between sanity checks and finding a free spot in either arrays. 
+
+Each function which gets a file descriptor as arugment is also doing obligatory sanity_check() to see if the fd holds a value between 0 and OPEN_MAX, and if it exists in fd_table[] with a valid file_node.
+Other checks are done to weed out any faulty arguments and return an appropriate erno value. 
+
+A function init_process_fdt() is used in runprogram.c to initialise all three std[in,out,err] files, attached to the console. 
+file_create() is shared between init_process_fdt() and sys_open() to reduce the amount of code for file creation 
+We use copyinstr() in sys_open() to pass the file name into the kernel.
+
+Sys_close() follows the implementation of from sys161 man page and doesn't affect other FDs if one file hase several FDs. 
+The same applies to the remaining functions aside the fact they also use uio_uinit(), and VOP_* functions to perform their jobs. 
+
+Because fd_table and of_table are statistically allocated this means we don't need to implement a clean_up function to both arrays. 
+
+synchronization: 
+We were not sure if we needed to implement a locks or semaphores for this assignment because of assignment specs mentining an 
+implementation of a data structure which would only require synchronisation to perform forks. We went with a file_lock in file_info to lock out the file it's self
+instead of an entire array. Semaphores are verya appealing if one decides to work with several processes concurently.
